@@ -13,6 +13,8 @@
   } from "@lucide/svelte";
   import { getFiltersByUser } from "../../../../services/actions/filter.js";
   import { logEvent } from "$lib/logHelper.js";
+  import WhatsAppShareButton from "$lib/WhatsAppShareButton.svelte";
+  import FacebookShareButton from "$lib/FacebookShareButton.svelte";
 
   // Base URL for filter images
   const FILTER_BASE_URL =
@@ -2017,28 +2019,92 @@ async function shareContent() {
     }
   }
 
-  // Function to open WhatsApp directly
-  async function openWhatsApp() {
-    const whatsappUrl = "https://wa.me/";
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    
-    if (isIOS) {
-      window.location.href = whatsappUrl;
-    } else {
-      window.open(whatsappUrl, "_blank");
+  // Function to share directly to WhatsApp
+  async function shareToWhatsApp() {
+    try {
+      // Get caption and files like in shareContent
+      let caption = "Check out my AR photo!";
+      try {
+        const response = await getFiltersByUser({ userId: currentUserId });
+        if (response?.result?.length > 0) {
+          const activeFilter = response.result.find((a) => a.filter_url === filterUrl);
+          if (activeFilter?.pretext) {
+            caption = `${activeFilter.pretext} \n${activeFilter.description}`;
+          }
+        }
+      } catch (e) {
+        console.error("Error fetching caption:", e);
+      }
+
+      // Build media file if available
+      let files = [];
+      try {
+        if (capturedImg) {
+          const imgBlob = await (await fetch(capturedImg)).blob();
+          files = [new File([imgBlob], "photo.png", { type: "image/png" })];
+        } else if (recordedVideo) {
+          const videoBlob = await (await fetch(recordedVideo)).blob();
+          files = [new File([videoBlob], "video.webm", { type: "video/webm" })];
+        }
+      } catch (e) {
+        console.warn("Failed creating File for WhatsApp share:", e);
+      }
+
+      // Web Share API - ONLY way for automatic photo attachment
+      if (navigator.share && files.length > 0) {
+        try {
+          await navigator.share({
+            title: "MyAR Photo",
+            text: caption,
+            files: files
+          });
+          return; // Photo automatically attached when user picks WhatsApp
+        } catch (err) {
+          console.log("Web Share failed, using fallback:", err);
+        }
+      }
+      
+      // Download photo and open WhatsApp simultaneously
+      if (capturedImg) {
+        console.log("Starting photo download...");
+        const link = document.createElement("a");
+        link.href = capturedImg;
+        link.download = `myar-photo-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        console.log("Photo download triggered");
+        
+        // Show download notification
+        setTimeout(() => {
+          alert("📱 Photo downloaded!\n\nCheck your Downloads folder or browser notifications.");
+        }, 1000);
+      } else {
+        console.log("No capturedImg found");
+        alert("❌ No photo to download. Please capture a photo first.");
+      }
+      
+      // Open WhatsApp immediately (no delay)
+      const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(caption)}`;
+      try {
+        window.location.href = whatsappUrl;
+      } catch {
+        window.open(`https://wa.me/?text=${encodeURIComponent(caption)}`, "_blank");
+      }
+      
+      if (capturedImg) {
+        await logEvent("photoShare");
+      } else if (recordedVideo) {
+        await logEvent("videoShare");
+      }
+    } catch (error) {
+      console.error("WhatsApp share error:", error);
     }
   }
 
-  // Function to open Facebook directly
-  async function openFacebook() {
-    const facebookUrl = "https://www.facebook.com/";
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    
-    if (isIOS) {
-      window.location.href = facebookUrl;
-    } else {
-      window.open(facebookUrl, "_blank");
-    }
+  // Function to share directly to Facebook
+  async function shareToFacebook() {
+    await shareContent();
   }
 </script>
 
@@ -2121,14 +2187,14 @@ async function shareContent() {
           <span class="btn-icon"><img src="/Share.svg" alt="Share" /></span>
           <span class="btn-text">Share</span>
         </button>
-        <button class="action-btn whatsapp-btn" on:click={openWhatsApp}>
-          <span class="btn-icon whatsapp-icon">📱</span>
-          <span class="btn-text">WhatsApp</span>
-        </button>
-        <button class="action-btn facebook-btn" on:click={openFacebook}>
-          <span class="btn-icon facebook-icon">F</span>
-          <span class="btn-text">Facebook</span>
-        </button>
+        <WhatsAppShareButton 
+          text={dynamicCaption || "Check out my AR photo!"} 
+          url={window.location.href} 
+        />
+        <FacebookShareButton 
+          url={window.location.href} 
+          quote={dynamicCaption || "Check out my AR photo!"} 
+        />
         <button class="action-btn filters-btn" on:click={showUserFilters}>
           <span class="btn-icon"><img src="/filter.svg" alt="Filters" /></span>
           <span class="btn-text">Filters</span>
