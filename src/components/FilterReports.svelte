@@ -139,8 +139,8 @@
           <h3 class="filter-title">{filter.name}</h3>
           <p class="filter-date">Created {filter.created}</p>
           <div class="filter-stats">
-            <span>📈 {filter.uses}</span>
             <span>👥 {filter.users}</span>
+            <span>📈 {filter.uses}</span>
           </div>
         </div>
       </div>
