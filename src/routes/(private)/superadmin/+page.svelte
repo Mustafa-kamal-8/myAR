@@ -20,6 +20,12 @@
     deletePricePlan,
   } from "../../../services/actions/price-plans.js";
   import {
+    savePackPlan,
+    getPackPlans,
+    updatePackPlan,
+    deletePackPlan,
+  } from "../../../services/actions/pack-plans.js";
+  import {
     Eye,
     IndianRupee,
     LogOut,
@@ -57,6 +63,18 @@
   let loadingPlans = false;
   let error = "";
   let success = "";
+
+  // Pack Plans State
+  let packPlans = [];
+  let totalPackPlans = 0;
+  let currentPackPlansPage = 1;
+  let packPlansPerPage = 6;
+  let totalPackPlansPages = 0;
+  let showPackPlanModal = false;
+  let showCreatePackPlanModal = false;
+  let selectedPackPlan = null;
+  let editingPackPlan = false;
+  let loadingPackPlans = false;
 
   // Image Upload State
   let showImageUpload = false;
@@ -109,6 +127,25 @@
     password: "",
   };
 
+  // Pack Plan Form
+  let packPlanForm = {
+    name: "",
+    filter_count: "",
+    price: "",
+    description: "",
+    billing_type: "one_time",
+    filter_type: [],
+  };
+
+  // Filter type options for dropdown
+  const filterTypeOptions = ["Static Filter", "Animated", "AI Animated"];
+
+  // Billing type options
+  const billingTypeOptions = [
+    { value: "one_time", label: "One Time" },
+    { value: "subscription", label: "Subscription" },
+  ];
+
   // Price Plan Form
   let planForm = {
     name: "",
@@ -139,6 +176,7 @@
       reports: "Reports",
       profile: "Profile",
       plans: "Price Plans",
+      "pack-plans": "Pack Plans",
     };
     return titles[section] || "Dashboard";
   }
@@ -207,6 +245,11 @@
 
   $: if (activeSection === "plans" && user) {
     loadPlans();
+  }
+
+  // Add this new reactive statement
+  $: if (activeSection === "pack-plans" && user) {
+    loadPackPlans();
   }
 
   $: if (
@@ -454,6 +497,219 @@
     }
   }
 
+  // Pack Plan Functions
+  async function loadPackPlans() {
+    loadingPackPlans = true;
+    try {
+      const response = await getPackPlans({
+        page: currentPackPlansPage,
+        sort: "-created_at",
+      });
+
+      if (!response.err) {
+        packPlans = response.result || [];
+        totalPackPlans = response.count || 0;
+      } else {
+        console.error("Error loading pack plans:", response.err);
+        error = "Failed to load pack plans";
+      }
+
+      totalPackPlansPages = Math.ceil(totalPackPlans / packPlansPerPage);
+    } catch (err) {
+      console.error("Error loading pack plans:", err);
+      error = "Failed to load pack plans";
+    } finally {
+      loadingPackPlans = false;
+    }
+  }
+
+  async function handleCreatePackPlan() {
+    console.log("🚀 handleCreatePackPlan function called!"); // Debug log
+
+    if (
+      !packPlanForm.name ||
+      !packPlanForm.filter_count ||
+      !packPlanForm.price
+    ) {
+      error = "Please fill in all required fields";
+      console.log("❌ Validation failed:", {
+        name: packPlanForm.name,
+        filter_count: packPlanForm.filter_count,
+        price: packPlanForm.price,
+      });
+      return;
+    }
+
+    console.log("✅ Validation passed, creating form data...");
+
+    const formData = {
+      ...packPlanForm,
+      filter_type: packPlanForm.filter_type.join(", "),
+    };
+
+    console.log("📦 Form data to send:", formData);
+
+    loading = true;
+    try {
+      console.log("📡 Calling savePackPlan API...");
+      const response = await savePackPlan(formData);
+      console.log("📨 API Response:", response);
+
+      if (!response.err) {
+        success = "Pack plan created successfully!";
+        showCreatePackPlanModal = false;
+        packPlanForm = {
+          name: "",
+          filter_count: "",
+          price: "",
+          description: "",
+          billing_type: "one_time",
+          filter_type: [],
+        };
+        await loadPackPlans();
+      } else {
+        error = response.err || "Failed to create pack plan";
+      }
+    } catch (err) {
+      console.error("❌ Error creating pack plan:", err);
+      error = "Failed to create pack plan";
+    }
+    loading = false;
+  }
+
+  async function handleUpdatePackPlan() {
+    if (
+      !packPlanForm.name ||
+      !packPlanForm.filter_count ||
+      !packPlanForm.price
+    ) {
+      error = "Please fill in all required fields";
+      return;
+    }
+
+    const formData = {
+      ...packPlanForm,
+      id: selectedPackPlan.id,
+      filter_type: packPlanForm.filter_type.join(", "),
+    };
+
+    loading = true;
+    try {
+      const response = await updatePackPlan(formData);
+
+      if (!response.err) {
+        success = "Pack plan updated successfully!";
+        showPackPlanModal = false;
+        editingPackPlan = false;
+        selectedPackPlan = null;
+        await loadPackPlans();
+      } else {
+        error = response.err || "Failed to update pack plan";
+      }
+    } catch (err) {
+      console.error("Error updating pack plan:", err);
+      error = "Failed to update pack plan";
+    }
+    loading = false;
+  }
+
+  async function handleDeletePackPlan(planId) {
+    if (
+      !confirm(
+        "Are you sure you want to delete this pack plan? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    loading = true;
+    try {
+      const response = await deletePackPlan(planId);
+
+      if (!response.err) {
+        success = "Pack plan deleted successfully!";
+        showPackPlanModal = false;
+        await loadPackPlans();
+      } else {
+        error = response.err || "Failed to delete pack plan";
+      }
+    } catch (err) {
+      console.error("Error deleting pack plan:", err);
+      error = "Failed to delete pack plan";
+    }
+    loading = false;
+  }
+
+  function openPackPlanModal(plan) {
+    selectedPackPlan = plan;
+    packPlanForm = {
+      name: plan.name || "",
+      filter_count: plan.filter_count || "",
+      price: plan.price || "",
+      description: plan.description || "",
+      billing_type: plan.billing_type || "one_time",
+      filter_type: plan.filter_type
+        ? Array.isArray(plan.filter_type)
+          ? plan.filter_type
+          : plan.filter_type.split(",").map((item) => item.trim())
+        : [],
+    };
+    showPackPlanModal = true;
+  }
+
+  function startEditPackPlan() {
+    editingPackPlan = true;
+  }
+
+  function cancelEditPackPlan() {
+    editingPackPlan = false;
+    if (selectedPackPlan) {
+      packPlanForm = {
+        name: selectedPackPlan.name || "",
+        filter_count: selectedPackPlan.filter_count || "",
+        price: selectedPackPlan.price || "",
+        description: selectedPackPlan.description || "",
+        billing_type: selectedPackPlan.billing_type || "one_time",
+        filter_type: selectedPackPlan.filter_type
+          ? Array.isArray(selectedPackPlan.filter_type)
+            ? selectedPackPlan.filter_type
+            : selectedPackPlan.filter_type.split(",").map((item) => item.trim())
+          : [],
+      };
+    }
+  }
+
+  function toggleFilterType(filterType) {
+    if (packPlanForm.filter_type.includes(filterType)) {
+      packPlanForm.filter_type = packPlanForm.filter_type.filter(
+        (type) => type !== filterType
+      );
+    } else {
+      packPlanForm.filter_type = [...packPlanForm.filter_type, filterType];
+    }
+  }
+
+  async function goToPackPlansPage(page) {
+    if (page >= 1 && page <= totalPackPlansPages && !loadingPackPlans) {
+      currentPackPlansPage = page;
+      await loadPackPlans();
+    }
+  }
+
+  async function nextPackPlansPage() {
+    if (currentPackPlansPage < totalPackPlansPages && !loadingPackPlans) {
+      currentPackPlansPage++;
+      await loadPackPlans();
+    }
+  }
+
+  async function prevPackPlansPage() {
+    if (currentPackPlansPage > 1 && !loadingPackPlans) {
+      currentPackPlansPage--;
+      await loadPackPlans();
+    }
+  }
+
   async function refreshFiltersAfterUserChange() {
     if (activeSection === "filters") {
       await loadFilters();
@@ -610,6 +866,10 @@
     } else if (newSection === "plans") {
       currentPlansPage = 1;
       await loadPlans();
+    } else if (newSection === "pack-plans") {
+      // Add this case
+      currentPackPlansPage = 1;
+      await loadPackPlans();
     }
   }
 
@@ -738,8 +998,8 @@
         </div>
 
         <!-- Image Upload Section -->
-        {#if showImageUpload} 
-         <div>
+        {#if showImageUpload}
+          <div>
             <ImageUpload
               {isUploading}
               {uploadSuccess}
@@ -801,14 +1061,22 @@
                 <div class="chart-card">
                   <h4>Sharing Platforms</h4>
                   <div class="chart-content">
-                    <img src={piechart} alt="Sharing Platforms Chart" class="pie-chart" />
+                    <img
+                      src={piechart}
+                      alt="Sharing Platforms Chart"
+                      class="pie-chart"
+                    />
                   </div>
                 </div>
 
                 <div class="chart-card">
                   <h4>User Locations</h4>
                   <div class="chart-content">
-                    <img src={graph} alt="User Locations Chart" class="bar-chart" />
+                    <img
+                      src={graph}
+                      alt="User Locations Chart"
+                      class="bar-chart"
+                    />
                   </div>
                 </div>
               </div>
@@ -1067,7 +1335,9 @@
                             </div>
                           </td>
                           <td>
-                            <span class="feature-value truncate">{plan.description || "N/A"}</span>
+                            <span class="feature-value truncate"
+                              >{plan.description || "N/A"}</span
+                            >
                           </td>
                           <td>
                             <span class="price">₹{plan.monthly_price}</span>
@@ -1093,7 +1363,7 @@
                           <td>
                             <span class="feature-value truncate">
                               {#if plan.features}
-                                {plan.features.split(' ')[0]}...
+                                {plan.features.split(" ")[0]}...
                               {:else}
                                 N/A
                               {/if}
@@ -1226,6 +1496,235 @@
                           disabled={currentPlansPage === totalPlansPages ||
                             loadingPlans}
                           on:click={nextPlansPage}
+                        >
+                          Next »
+                        </button>
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
+          <!-- Pack Plans Section -->
+          {#if activeSection === "pack-plans"}
+            <div class="section-content">
+              <div class="section-header">
+                <h2 class="section-title">Pack Plan Management</h2>
+                <button
+                  class="action-btn primary"
+                  on:click={() => (showCreatePackPlanModal = true)}
+                >
+                  <span class="btn-icon"><Plus /></span>
+                  Create Pack Plan
+                </button>
+              </div>
+
+              {#if loadingPackPlans}
+                <div class="loading-container">
+                  <div class="loading-spinner"></div>
+                  <p class="loading-text">Loading pack plans...</p>
+                </div>
+              {:else if packPlans.length === 0}
+                <div class="loading-container">
+                  <div class="empty-icon">📦</div>
+                  <h3 class="empty-title">No Pack Plans Found</h3>
+                  <p class="empty-text">
+                    Start by creating your first pack plan to offer different
+                    filter packs to your users.
+                  </p>
+                  <button
+                    class="action-btn primary"
+                    on:click={() => (showCreatePackPlanModal = true)}
+                  >
+                    <span class="btn-icon"><Plus /></span>
+                    Create First Pack Plan
+                  </button>
+                </div>
+              {:else}
+                <div class="table-container">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>Pack Name</th>
+                        <th>Description</th>
+                        <th>Filter Count</th>
+                        <th>Price</th>
+                        <th>Billing Type</th>
+                        <th>Filter Types</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each packPlans as plan (plan.id)}
+                        <tr>
+                          <td>
+                            <div class="plan-name">
+                              <strong>{plan.name}</strong>
+                            </div>
+                          </td>
+                          <td>
+                            <span class="feature-value truncate"
+                              >{plan.description || "N/A"}</span
+                            >
+                          </td>
+                          <td>
+                            <span class="feature-value"
+                              >{plan.filter_count}</span
+                            >
+                          </td>
+                          <td>
+                            <span class="price">₹{plan.price}</span>
+                          </td>
+                          <td>
+                            <span class="feature-value"
+                              >{plan.billing_type === "one_time"
+                                ? "One Time"
+                                : "Subscription"}</span
+                            >
+                          </td>
+                          <td>
+                            <span class="feature-value truncate">
+                              {#if plan.filter_type}
+                                {Array.isArray(plan.filter_type)
+                                  ? plan.filter_type.join(", ")
+                                  : plan.filter_type}
+                              {:else}
+                                N/A
+                              {/if}
+                            </span>
+                          </td>
+                          <td>
+                            <div class="action-buttons">
+                              <button
+                                class="action-btn small secondary"
+                                on:click={() => openPackPlanModal(plan)}
+                              >
+                                <span class="btn-icon"><Eye size="18" /></span>
+                              </button>
+                              <button
+                                class="action-btn small danger"
+                                on:click={() => handleDeletePackPlan(plan.id)}
+                              >
+                                <span class="btn-icon"
+                                  ><Trash2 size="18" /></span
+                                >
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+
+                  {#if totalPackPlansPages > 1}
+                    <div class="pagination">
+                      <div class="pagination-info">
+                        Showing {(currentPackPlansPage - 1) * packPlansPerPage +
+                          1} to {Math.min(
+                          currentPackPlansPage * packPlansPerPage,
+                          totalPackPlans
+                        )} of {totalPackPlans} pack plans
+                      </div>
+                      <div class="pagination-controls">
+                        <button
+                          class="pagination-btn"
+                          disabled={currentPackPlansPage === 1 ||
+                            loadingPackPlans}
+                          on:click={prevPackPlansPage}
+                        >
+                          « Previous
+                        </button>
+
+                        {#if totalPackPlansPages <= 5}
+                          {#each Array(totalPackPlansPages) as _, i}
+                            <button
+                              class="pagination-btn"
+                              class:active={currentPackPlansPage === i + 1}
+                              disabled={loadingPackPlans}
+                              on:click={() => goToPackPlansPage(i + 1)}
+                            >
+                              {i + 1}
+                            </button>
+                          {/each}
+                        {:else if currentPackPlansPage <= 3}
+                          {#each Array(3) as _, i}
+                            <button
+                              class="pagination-btn"
+                              class:active={currentPackPlansPage === i + 1}
+                              disabled={loadingPackPlans}
+                              on:click={() => goToPackPlansPage(i + 1)}
+                            >
+                              {i + 1}
+                            </button>
+                          {/each}
+                          <span class="pagination-ellipsis">...</span>
+                          <button
+                            class="pagination-btn"
+                            disabled={loadingPackPlans}
+                            on:click={() =>
+                              goToPackPlansPage(totalPackPlansPages)}
+                          >
+                            {totalPackPlansPages}
+                          </button>
+                        {:else if currentPackPlansPage >= totalPackPlansPages - 2}
+                          <button
+                            class="pagination-btn"
+                            disabled={loadingPackPlans}
+                            on:click={() => goToPackPlansPage(1)}
+                          >
+                            1
+                          </button>
+                          <span class="pagination-ellipsis">...</span>
+                          {#each Array(3) as _, i}
+                            <button
+                              class="pagination-btn"
+                              class:active={currentPackPlansPage ===
+                                totalPackPlansPages - 2 + i}
+                              disabled={loadingPackPlans}
+                              on:click={() =>
+                                goToPackPlansPage(totalPackPlansPages - 2 + i)}
+                            >
+                              {totalPackPlansPages - 2 + i}
+                            </button>
+                          {/each}
+                        {:else}
+                          <button
+                            class="pagination-btn"
+                            disabled={loadingPackPlans}
+                            on:click={() => goToPackPlansPage(1)}
+                          >
+                            1
+                          </button>
+                          <span class="pagination-ellipsis">...</span>
+                          {#each Array(3) as _, i}
+                            <button
+                              class="pagination-btn"
+                              class:active={currentPackPlansPage ===
+                                currentPackPlansPage - 1 + i}
+                              disabled={loadingPackPlans}
+                              on:click={() =>
+                                goToPackPlansPage(currentPackPlansPage - 1 + i)}
+                            >
+                              {currentPackPlansPage - 1 + i}
+                            </button>
+                          {/each}
+                          <span class="pagination-ellipsis">...</span>
+                          <button
+                            class="pagination-btn"
+                            disabled={loadingPackPlans}
+                            on:click={() =>
+                              goToPackPlansPage(totalPackPlansPages)}
+                          >
+                            {totalPackPlansPages}
+                          </button>
+                        {/if}
+
+                        <button
+                          class="pagination-btn"
+                          disabled={currentPackPlansPage ===
+                            totalPackPlansPages || loadingPackPlans}
+                          on:click={nextPackPlansPage}
                         >
                           Next »
                         </button>
@@ -1551,6 +2050,215 @@
   </div>
 {/if}
 
+<!-- Pack Plan Modal -->
+{#if showCreatePackPlanModal || showPackPlanModal}
+  <div
+    class="modal-overlay"
+    on:click={() => {
+      showCreatePackPlanModal = false;
+      showPackPlanModal = false;
+      editingPackPlan = false;
+      selectedPackPlan = null;
+    }}
+  >
+    <div class="modal" on:click|stopPropagation>
+      <div class="modal-header">
+        <h3>
+          {showCreatePackPlanModal
+            ? "Create Pack Plan"
+            : editingPackPlan
+              ? "Edit Pack Plan"
+              : "Pack Plan Details"}
+        </h3>
+        <button
+          class="modal-close"
+          on:click={() => {
+            showCreatePackPlanModal = false;
+            showPackPlanModal = false;
+            editingPackPlan = false;
+            selectedPackPlan = null;
+          }}>✕</button
+        >
+      </div>
+
+      <div class="modal-body">
+        {#if !editingPackPlan && !showCreatePackPlanModal}
+          <!-- View Mode -->
+          <div class="view-mode">
+            <div class="detail-row">
+              <span class="detail-label">Pack Name:</span>
+              <span class="detail-value">{packPlanForm.name}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Description:</span>
+              <span class="detail-value"
+                >{packPlanForm.description || "N/A"}</span
+              >
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Filter Count:</span>
+              <span class="detail-value">{packPlanForm.filter_count}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Price:</span>
+              <span class="detail-value price">₹{packPlanForm.price}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Billing Type:</span>
+              <span class="detail-value"
+                >{packPlanForm.billing_type === "one_time"
+                  ? "One Time"
+                  : "Subscription"}</span
+              >
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Filter Types:</span>
+              <span class="detail-value"
+                >{packPlanForm.filter_type.join(", ") || "N/A"}</span
+              >
+            </div>
+          </div>
+        {:else}
+          <!-- Edit/Create Mode -->
+          <form
+            on:submit|preventDefault={showCreatePackPlanModal
+              ? handleCreatePackPlan
+              : handleUpdatePackPlan}
+          >
+            <div class="form-group">
+              <label for="pack-name">Pack Name *</label>
+              <input
+                id="pack-name"
+                type="text"
+                bind:value={packPlanForm.name}
+                placeholder="Enter pack name"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="pack-description">Description</label>
+              <textarea
+                id="pack-description"
+                bind:value={packPlanForm.description}
+                placeholder="Enter pack description"
+                rows="3"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="filter-count">Filter Count *</label>
+              <input
+                id="filter-count"
+                type="number"
+                bind:value={packPlanForm.filter_count}
+                placeholder="Enter number of filters"
+                min="1"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="pack-price">Price (₹) *</label>
+              <input
+                id="pack-price"
+                type="number"
+                bind:value={packPlanForm.price}
+                placeholder="Enter price"
+                min="0"
+                step="0.01"
+                required
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="billing-type">Billing Type *</label>
+              <select
+                id="billing-type"
+                bind:value={packPlanForm.billing_type}
+                required
+              >
+                {#each billingTypeOptions as option}
+                  <option value={option.value}>{option.label}</option>
+                {/each}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Filter Types</label>
+              <div class="checkbox-group">
+                {#each filterTypeOptions as type}
+                  <label class="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={packPlanForm.filter_type.includes(type)}
+                      on:change={() => toggleFilterType(type)}
+                    />
+                    <span class="checkmark"></span>
+                    {type}
+                  </label>
+                {/each}
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button
+                type="button"
+                class="action-btn secondary"
+                on:click={() => {
+                  if (showCreatePackPlanModal) {
+                    showCreatePackPlanModal = false;
+                    packPlanForm = {
+                      name: "",
+                      filter_count: "",
+                      price: "",
+                      description: "",
+                      billing_type: "one_time",
+                      filter_type: [],
+                    };
+                  } else {
+                    cancelEditPackPlan();
+                  }
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="action-btn primary"
+                disabled={loading}
+              >
+                {#if loading}
+                  <div class="small-spinner"></div>
+                  {showCreatePackPlanModal ? "Creating..." : "Updating..."}
+                {:else}
+                  {showCreatePackPlanModal ? "Create Plan" : "Update Plan"}
+                {/if}
+              </button>
+            </div>
+          </form>
+        {/if}
+      </div>
+
+      {#if !editingPackPlan && !showCreatePackPlanModal}
+        <div class="modal-actions">
+          <button class="action-btn primary" on:click={startEditPackPlan}>
+            <span class="btn-icon"><Pencil size="18" /></span>
+            Edit Plan
+          </button>
+          <button
+            class="action-btn danger"
+            on:click={() => handleDeletePackPlan(selectedPackPlan.id)}
+          >
+            <span class="btn-icon"><Trash2 size="18" /></span>
+            Delete Plan
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
 <!-- Price Plan View/Edit Modal -->
 {#if showPlanModal && selectedPlan}
   <div class="modal-overlay" on:click={() => (showPlanModal = false)}>
@@ -1705,7 +2413,7 @@
               <span class="detail-label">Features:</span>
               <div class="detail-value features-list">
                 {#if selectedPlan.features}
-                  {#each selectedPlan.features.split('\n') as feature}
+                  {#each selectedPlan.features.split("\n") as feature}
                     <div class="feature-item">{feature}</div>
                   {/each}
                 {:else}
@@ -2731,7 +3439,8 @@
     align-items: center;
   }
 
-  .pie-chart, .bar-chart {
+  .pie-chart,
+  .bar-chart {
     max-width: 100%;
     height: auto;
   }

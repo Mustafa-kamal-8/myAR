@@ -91,62 +91,70 @@
     console.log("Additional filters modal should be visible now");
   }
 
+  function getActualFilterId(): string | null {
+    if (!filterUrl || userFilters.length === 0) return null;
+
+    const activeFilter = userFilters.find((a) => a.filter_url === filterUrl);
+    return activeFilter ? activeFilter.id : null;
+  }
 
   // Add this function to load user filters
-async function loadUserFilters() {
-  if (!currentUserId) {
-    console.log("No user ID available to load filters");
-    return;
-  }
-
-  try {
-    const response = await getFiltersByUser({ userId: currentUserId });
-    if (response?.result?.length > 0) {
-      userFilters = response.result;
-      console.log("User filters loaded successfully:", userFilters.length);
-      
-      // Set dynamic caption if we have a matching filter
-      const activeFilter = userFilters.find((a) => a.filter_url === filterUrl);
-      console.log("Active filter for caption:", activeFilter);
-      if (activeFilter?.pretext) {
-        dynamicCaption = `${activeFilter.pretext} \n${activeFilter.description}`;
-      }
+  async function loadUserFilters() {
+    if (!currentUserId) {
+      console.log("No user ID available to load filters");
+      return;
     }
-  } catch (e) {
-    console.error("Error fetching user filters:", e);
-  }
-}
 
-onMount(async () => {
-  await logEvent("openLink");
-  await logEvent("cameraAccessAttempt");
-  
-  // Load filter first to get currentUserId
-  await loadFilter();
+    try {
+      const response = await getFiltersByUser({ userId: currentUserId });
+      if (response?.result?.length > 0) {
+        userFilters = response.result;
+        console.log("User filters loaded successfully:", userFilters.length);
 
-  // Load user filters if we have a user ID
-  if (currentUserId) {
-    console.log("Loading user filters for user:", currentUserId);
-    await loadUserFilters(); // ← ADD THIS LINE
-  } else {
-    console.log("No user ID found, skipping user filters load");
-  }
-
-  await startCamera();
-  initializeOffscreenCanvas();
-
-  // Only initialize face tracking in browser
-  if (typeof window !== "undefined") {
-    await initializeFaceTracking();
-    // Start face tracking after initialization with a delay
-    setTimeout(() => {
-      if (faceMesh && isCameraActive) {
-        startFaceTracking();
-        console.log("Face tracking started after initial setup");
+        // Set dynamic caption if we have a matching filter
+        const activeFilter = userFilters.find(
+          (a) => a.filter_url === filterUrl
+        );
+        console.log("Active filter for caption:", activeFilter);
+        if (activeFilter?.pretext) {
+          dynamicCaption = `${activeFilter.pretext} \n${activeFilter.description}`;
+        }
       }
-    }, 1500);
+    } catch (e) {
+      console.error("Error fetching user filters:", e);
+    }
   }
-});
+
+  onMount(async () => {
+    await logEvent("openLink", getActualFilterId());
+    await logEvent("cameraAccessAttempt", getActualFilterId());
+
+    // Load filter first to get currentUserId
+    await loadFilter();
+
+    // Load user filters if we have a user ID
+    if (currentUserId) {
+      console.log("Loading user filters for user:", currentUserId);
+      await loadUserFilters(); // ← ADD THIS LINE
+    } else {
+      console.log("No user ID found, skipping user filters load");
+    }
+
+    await startCamera();
+    initializeOffscreenCanvas();
+
+    // Only initialize face tracking in browser
+    if (typeof window !== "undefined") {
+      await initializeFaceTracking();
+      // Start face tracking after initialization with a delay
+      setTimeout(() => {
+        if (faceMesh && isCameraActive) {
+          startFaceTracking();
+          console.log("Face tracking started after initial setup");
+        }
+      }, 1500);
+    }
+  });
 
   // Initialize offscreen canvas for compositing operations
   function initializeOffscreenCanvas() {
@@ -952,7 +960,7 @@ onMount(async () => {
   async function capturePhoto() {
     if (isCapturing) return; // Prevent multiple simultaneous captures
 
-    await logEvent("photoCapture");
+    await logEvent("photoCapture", getActualFilterId());
 
     // Add haptic feedback on supported devices for better UX
     if (navigator.vibrate) {
@@ -1106,12 +1114,12 @@ onMount(async () => {
       // Generate image data URL using lossless PNG to preserve original quality
       const outputFormat = "image/png";
       capturedImg = canvasRef.toDataURL(outputFormat);
-      
+
       // Create blob for sharing
       canvasRef.toBlob((blob) => {
         capturedImageBlob = blob;
       }, outputFormat);
-      
+
       recordedVideo = null;
 
       console.log(
@@ -1119,7 +1127,7 @@ onMount(async () => {
       );
 
       // logEvent("photoCaptured");
-       await logFilterCapture();
+      await logFilterCapture();
 
       // Stop camera and show preview
       stopCamera();
@@ -1134,64 +1142,63 @@ onMount(async () => {
   }
 
   // Function to log filter usage when photo is captured
-// Enhanced debug version of logFilterCapture
-// Function to log filter usage when photo is captured
-// Enhanced logFilterCapture function with better debugging
-async function logFilterCapture() {
-  try {
-    console.log("🔄 STARTING FILTER LOGGING DEBUG...");
-    console.log("filterUrl:", filterUrl);
-    console.log("currentUserId:", currentUserId);
-    console.log("userFilters available:", userFilters.length);
-    console.log("userFilters content:", userFilters);
-
-    let actualFilterId = null;
-
-    // Find the actual filter ID from userFilters
-    if (filterUrl && userFilters.length > 0) {
-      console.log("🔍 Looking for filter with URL:", filterUrl);
-      
-      const activeFilter = userFilters.find((a) => {
-        console.log("Comparing:", {
-          filterUrl: filterUrl,
-          userFilterUrl: a.filter_url,
-          match: a.filter_url === filterUrl
-        });
-        return a.filter_url === filterUrl;
-      });
-      
-      console.log("activeFilter found:", activeFilter);
-      
-      if (activeFilter) {
-        actualFilterId = activeFilter.id;
-        console.log("✅ Using filter ID:", actualFilterId);
-      } else {
-        console.log("❌ No matching filter found. Available URLs:");
-        userFilters.forEach((filter, index) => {
-          console.log(`  ${index}: ${filter.filter_url}`);
-        });
-      }
-    } else {
-      console.log("ℹ️ No filterUrl or userFilters available");
-      if (!filterUrl) console.log("  - filterUrl is null/empty");
-      if (userFilters.length === 0) console.log("  - userFilters is empty");
-    }
-
-    // Always log "filterUsed" event with the actual filter ID
-    console.log("📤 Logging filter event with ID:", actualFilterId);
-    await logEvent("filterUsed", actualFilterId);
-    console.log("✅ Filter used logged with ID:", actualFilterId);
-    
-  } catch (error) {
-    console.error("❌ Failed to log filter capture:", error);
-    // Fallback
+  // Enhanced debug version of logFilterCapture
+  // Function to log filter usage when photo is captured
+  // Enhanced logFilterCapture function with better debugging
+  async function logFilterCapture() {
     try {
-      await logEvent("filterUsed", null);
-    } catch (fallbackError) {
-      console.error("❌ Fallback filter logging also failed:", fallbackError);
+      console.log("🔄 STARTING FILTER LOGGING DEBUG...");
+      console.log("filterUrl:", filterUrl);
+      console.log("currentUserId:", currentUserId);
+      console.log("userFilters available:", userFilters.length);
+      console.log("userFilters content:", userFilters);
+
+      let actualFilterId = null;
+
+      // Find the actual filter ID from userFilters
+      if (filterUrl && userFilters.length > 0) {
+        console.log("🔍 Looking for filter with URL:", filterUrl);
+
+        const activeFilter = userFilters.find((a) => {
+          console.log("Comparing:", {
+            filterUrl: filterUrl,
+            userFilterUrl: a.filter_url,
+            match: a.filter_url === filterUrl,
+          });
+          return a.filter_url === filterUrl;
+        });
+
+        console.log("activeFilter found:", activeFilter);
+
+        if (activeFilter) {
+          actualFilterId = activeFilter.id;
+          console.log("✅ Using filter ID:", actualFilterId);
+        } else {
+          console.log("❌ No matching filter found. Available URLs:");
+          userFilters.forEach((filter, index) => {
+            console.log(`  ${index}: ${filter.filter_url}`);
+          });
+        }
+      } else {
+        console.log("ℹ️ No filterUrl or userFilters available");
+        if (!filterUrl) console.log("  - filterUrl is null/empty");
+        if (userFilters.length === 0) console.log("  - userFilters is empty");
+      }
+
+      // Always log "filterUsed" event with the actual filter ID
+      console.log("📤 Logging filter event with ID:", actualFilterId);
+      await logEvent("filterUsed", actualFilterId);
+      console.log("✅ Filter used logged with ID:", actualFilterId);
+    } catch (error) {
+      console.error("❌ Failed to log filter capture:", error);
+      // Fallback
+      try {
+        await logEvent("filterUsed", null);
+      } catch (fallbackError) {
+        console.error("❌ Fallback filter logging also failed:", fallbackError);
+      }
     }
   }
-}
 
   async function startVideoRecording() {
     // Check if canvas.captureStream is supported
@@ -1201,7 +1208,7 @@ async function logFilterCapture() {
       return;
     }
     videoRecordingStartTime = Date.now();
-    await logEvent("videoRecordingStart");
+    await logEvent("videoRecordingStart", getActualFilterId());
 
     try {
       recordedChunks = [];
@@ -1548,7 +1555,7 @@ async function logFilterCapture() {
 
       // Log video recording stop with duration in seconds and minutes
 
-      logEvent(`videoRecorded${durationInMinutes}min`);
+      logEvent(`videoRecorded${durationInMinutes}min`, getActualFilterId());
 
       console.log("Current MediaRecorder state:", mediaRecorder.state);
       console.log("Recorded chunks so far:", recordedChunks.length);
@@ -1610,195 +1617,198 @@ async function logFilterCapture() {
     }
   }
 
-async function shareContent() {
-  console.log("shareContent called", dynamicCaption);
-  console.log("capturedImg:", !!capturedImg);
-  console.log("recordedVideo:", !!recordedVideo);
+  async function shareContent() {
+    console.log("shareContent called", dynamicCaption);
+    console.log("capturedImg:", !!capturedImg);
+    console.log("recordedVideo:", !!recordedVideo);
 
-  // if (capturedImg) {
-  //   logEvent("photoShare");
-  // } else if (recordedVideo) {
-  //   logEvent("videoShare");
-  // }
+    // if (capturedImg) {
+    //   logEvent("photoShare");
+    // } else if (recordedVideo) {
+    //   logEvent("videoShare");
+    // }
 
- try {
-    const response = await getFiltersByUser({ userId: currentUserId });
-    if (response?.result?.length > 0) {
-      // REMOVE 'const' - update the global variable
-      userFilters = response.result; // ← Remove 'const' here
-      console.log("userFilters", userFilters)
-      const activeFilter = userFilters.find(
-        (a) => a.filter_url === filterUrl
-      );
-      console.log("activeFilter", activeFilter)
-      if (activeFilter?.pretext) {
-        dynamicCaption = `${activeFilter.pretext} \n${activeFilter.description}`;
-      }
-    }
-  } catch (e) {
-    console.error("Error fetching filters:", e);
-  }
-
-  const CAPTION = dynamicCaption || "";
-  console.log("Final caption:", CAPTION);
-
-  const copyCaption = async (text: string) => {
     try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "absolute";
-      textarea.style.left = "-9999px";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  await copyCaption(CAPTION);
-
-  // Build media file if available
-  let files: File[] = [];
-  try {
-    if (capturedImg) {
-      const imgBlob = await (await fetch(capturedImg)).blob();
-      const imgType = imgBlob.type || "image/png";
-      files = [new File([imgBlob], "photo.png", { type: imgType })];
-    } else if (recordedVideo) {
-      const videoBlob = await (await fetch(recordedVideo)).blob();
-      const videoType = videoBlob.type || "video/webm";
-      files = [new File([videoBlob], "video.webm", { type: videoType })];
-    }
-  } catch (e) {
-    console.warn("Failed creating File for share:", e);
-  }
-
-  // Prefer Web Share API with files
-  try {
-    if (files.length && navigator.share && navigator.canShare?.({ files })) {
-      await navigator.share({ title: "MyAR", text: CAPTION, files });
-      console.log("Shared via Web Share API with files");
-      if (capturedImg) {
-        await logEvent("photoShare");
-      } else if (recordedVideo) {
-        await logEvent("videoShare");
-      }
-      return;
-    }
-  } catch (err) {
-    console.log("Web Share API sharing failed, using fallbacks:", err);
-  }
-
-  // Platform detection
-  const ua = navigator.userAgent.toLowerCase();
-  const isAndroid = /android/.test(ua);
-  const isIOS = /iphone|ipad|ipod/.test(ua);
-  const isWindows = /windows/.test(ua);
-
-  // Helper: trigger media download so the user can attach manually
-  const triggerDownload = async () => {
-    try {
-      if (capturedImg) {
-        const a = document.createElement("a");
-        a.href = capturedImg;
-        a.download = `myar-photo-${Date.now()}.png`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      } else if (recordedVideo) {
-        const a = document.createElement("a");
-        a.href = recordedVideo;
-        a.download = `myar-video-${Date.now()}.webm`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      }
-    } catch (e) {
-      console.warn("Auto-download failed:", e);
-    }
-  };
-
-  try {
-    if (!capturedImg && !recordedVideo) {
-      alert("No photo or video to share. Capture something first!");
-      return;
-    }
-
-    // ✅ Fixed WhatsApp section
-    const whatsappText = encodeURIComponent(CAPTION);
-    const openWhatsApp = async () => {
-      // Try Web Share API if supported
-      if (files.length && navigator.share && navigator.canShare?.({ files })) {
-        try {
-          await navigator.share({ title: "MyAR", text: CAPTION, files });
-          console.log("Shared via Web Share API (with media)");
-          return;
-        } catch (err) {
-          console.warn("WhatsApp Web Share failed, using fallback:", err);
+      const response = await getFiltersByUser({ userId: currentUserId });
+      if (response?.result?.length > 0) {
+        // REMOVE 'const' - update the global variable
+        userFilters = response.result; // ← Remove 'const' here
+        console.log("userFilters", userFilters);
+        const activeFilter = userFilters.find(
+          (a) => a.filter_url === filterUrl
+        );
+        console.log("activeFilter", activeFilter);
+        if (activeFilter?.pretext) {
+          dynamicCaption = `${activeFilter.pretext} \n${activeFilter.description}`;
         }
       }
+    } catch (e) {
+      console.error("Error fetching filters:", e);
+    }
 
-      // Fallback: download media and open WhatsApp manually
+    const CAPTION = dynamicCaption || "";
+    console.log("Final caption:", CAPTION);
+
+    const copyCaption = async (text: string) => {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    await copyCaption(CAPTION);
+
+    // Build media file if available
+    let files: File[] = [];
+    try {
+      if (capturedImg) {
+        const imgBlob = await (await fetch(capturedImg)).blob();
+        const imgType = imgBlob.type || "image/png";
+        files = [new File([imgBlob], "photo.png", { type: imgType })];
+      } else if (recordedVideo) {
+        const videoBlob = await (await fetch(recordedVideo)).blob();
+        const videoType = videoBlob.type || "video/webm";
+        files = [new File([videoBlob], "video.webm", { type: videoType })];
+      }
+    } catch (e) {
+      console.warn("Failed creating File for share:", e);
+    }
+
+    // Prefer Web Share API with files
+    try {
+      if (files.length && navigator.share && navigator.canShare?.({ files })) {
+        await navigator.share({ title: "MyAR", text: CAPTION, files });
+        console.log("Shared via Web Share API with files");
+        if (capturedImg) {
+          await logEvent("photoShare", getActualFilterId());
+        } else if (recordedVideo) {
+          await logEvent("videoShare", getActualFilterId());
+        }
+        return;
+      }
+    } catch (err) {
+      console.log("Web Share API sharing failed, using fallbacks:", err);
+    }
+
+    // Platform detection
+    const ua = navigator.userAgent.toLowerCase();
+    const isAndroid = /android/.test(ua);
+    const isIOS = /iphone|ipad|ipod/.test(ua);
+    const isWindows = /windows/.test(ua);
+
+    // Helper: trigger media download so the user can attach manually
+    const triggerDownload = async () => {
+      try {
+        if (capturedImg) {
+          const a = document.createElement("a");
+          a.href = capturedImg;
+          a.download = `myar-photo-${Date.now()}.png`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        } else if (recordedVideo) {
+          const a = document.createElement("a");
+          a.href = recordedVideo;
+          a.download = `myar-video-${Date.now()}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        }
+      } catch (e) {
+        console.warn("Auto-download failed:", e);
+      }
+    };
+
+    try {
+      if (!capturedImg && !recordedVideo) {
+        alert("No photo or video to share. Capture something first!");
+        return;
+      }
+
+      // ✅ Fixed WhatsApp section
+      const whatsappText = encodeURIComponent(CAPTION);
+      const openWhatsApp = async () => {
+        // Try Web Share API if supported
+        if (
+          files.length &&
+          navigator.share &&
+          navigator.canShare?.({ files })
+        ) {
+          try {
+            await navigator.share({ title: "MyAR", text: CAPTION, files });
+            console.log("Shared via Web Share API (with media)");
+            return;
+          } catch (err) {
+            console.warn("WhatsApp Web Share failed, using fallback:", err);
+          }
+        }
+
+        // Fallback: download media and open WhatsApp manually
+        await triggerDownload();
+
+        alert(
+          "📋 Caption copied to clipboard.\n📦 Media downloaded.\n\nPlease open WhatsApp manually and attach the media — the caption is ready to paste."
+        );
+
+        // Open WhatsApp text-only share link
+        const whatsappUrl = `https://wa.me/?text=${whatsappText}`;
+        if (isIOS) {
+          window.location.href = whatsappUrl;
+        } else {
+          window.open(whatsappUrl, "_blank");
+        }
+      };
+
+      // Facebook share (cannot pre-attach files; can only share a URL and text)
+      const openFacebook = () => {
+        const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+          window.location.href
+        )}&quote=${encodeURIComponent(CAPTION)}`;
+        if (isIOS) {
+          window.location.href = url;
+        } else {
+          window.open(url, "_blank", "width=600,height=500");
+        }
+      };
+
+      // Instagram share (no official web share; open site/app and instruct user)
+      const openInstagram = () => {
+        const url = `https://www.instagram.com/`;
+        if (isIOS) {
+          window.location.href = url;
+        } else {
+          window.open(url, "_blank", "width=600,height=500");
+        }
+      };
+
+      // Download media so user can attach in app, and inform about caption
       await triggerDownload();
 
       alert(
-        "📋 Caption copied to clipboard.\n📦 Media downloaded.\n\nPlease open WhatsApp manually and attach the media — the caption is ready to paste."
+        "Caption copied to clipboard. Media downloaded. Open the app and paste the caption when you attach the media."
       );
 
-      // Open WhatsApp text-only share link
-      const whatsappUrl = `https://wa.me/?text=${whatsappText}`;
-      if (isIOS) {
-        window.location.href = whatsappUrl;
-      } else {
-        window.open(whatsappUrl, "_blank");
-      }
-    };
-
-    // Facebook share (cannot pre-attach files; can only share a URL and text)
-    const openFacebook = () => {
-      const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
-        window.location.href
-      )}&quote=${encodeURIComponent(CAPTION)}`;
-      if (isIOS) {
-        window.location.href = url;
-      } else {
-        window.open(url, "_blank", "width=600,height=500");
-      }
-    };
-
-    // Instagram share (no official web share; open site/app and instruct user)
-    const openInstagram = () => {
-      const url = `https://www.instagram.com/`;
-      if (isIOS) {
-        window.location.href = url;
-      } else {
-        window.open(url, "_blank", "width=600,height=500");
-      }
-    };
-
-    // Download media so user can attach in app, and inform about caption
-    await triggerDownload();
-
-    alert(
-      "Caption copied to clipboard. Media downloaded. Open the app and paste the caption when you attach the media."
-    );
-
-    // Try opening targets to assist the user
-    openWhatsApp();
-    openFacebook();
-    openInstagram();
-  } catch (err) {
-    console.error("Final share error:", err);
-    alert("Failed to share content. Please try again.");
+      // Try opening targets to assist the user
+      openWhatsApp();
+      openFacebook();
+      openInstagram();
+    } catch (err) {
+      console.error("Final share error:", err);
+      alert("Failed to share content. Please try again.");
+    }
   }
-}
-
 
   // Function to show all user filters
   async function showUserFilters() {
@@ -2035,7 +2045,9 @@ async function shareContent() {
       try {
         const response = await getFiltersByUser({ userId: currentUserId });
         if (response?.result?.length > 0) {
-          const activeFilter = response.result.find((a) => a.filter_url === filterUrl);
+          const activeFilter = response.result.find(
+            (a) => a.filter_url === filterUrl
+          );
           if (activeFilter?.pretext) {
             caption = `${activeFilter.pretext} \n${activeFilter.description}`;
           }
@@ -2064,14 +2076,14 @@ async function shareContent() {
           await navigator.share({
             title: "MyAR Photo",
             text: caption,
-            files: files
+            files: files,
           });
           return; // Photo automatically attached when user picks WhatsApp
         } catch (err) {
           console.log("Web Share failed, using fallback:", err);
         }
       }
-      
+
       // Download photo and open WhatsApp simultaneously
       if (capturedImg) {
         console.log("Starting photo download...");
@@ -2082,28 +2094,33 @@ async function shareContent() {
         link.click();
         document.body.removeChild(link);
         console.log("Photo download triggered");
-        
+
         // Show download notification
         setTimeout(() => {
-          alert("📱 Photo downloaded!\n\nCheck your Downloads folder or browser notifications.");
+          alert(
+            "📱 Photo downloaded!\n\nCheck your Downloads folder or browser notifications."
+          );
         }, 1000);
       } else {
         console.log("No capturedImg found");
         alert("❌ No photo to download. Please capture a photo first.");
       }
-      
+
       // Open WhatsApp immediately (no delay)
       const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(caption)}`;
       try {
         window.location.href = whatsappUrl;
       } catch {
-        window.open(`https://wa.me/?text=${encodeURIComponent(caption)}`, "_blank");
+        window.open(
+          `https://wa.me/?text=${encodeURIComponent(caption)}`,
+          "_blank"
+        );
       }
-      
+
       if (capturedImg) {
-        await logEvent("photoShare");
+        await logEvent("photoShare", getActualFilterId());
       } else if (recordedVideo) {
-        await logEvent("videoShare");
+        await logEvent("videoShare", getActualFilterId());
       }
     } catch (error) {
       console.error("WhatsApp share error:", error);
@@ -2195,14 +2212,14 @@ async function shareContent() {
           <span class="btn-icon"><img src="/Share.svg" alt="Share" /></span>
           <span class="btn-text">Share</span>
         </button>
-        <WhatsAppShareButton 
-          text={dynamicCaption || "Check out my AR photo!"} 
+        <WhatsAppShareButton
+          text={dynamicCaption || "Check out my AR photo!"}
           photoUrl={capturedImg}
           imageBlob={capturedImageBlob}
           filename="ar-photo.jpg"
         />
-        <FacebookShareButton 
-          quote={dynamicCaption || "Check out my AR photo!"} 
+        <FacebookShareButton
+          quote={dynamicCaption || "Check out my AR photo!"}
           imageBlob={capturedImageBlob}
           filename="ar-photo.jpg"
         />

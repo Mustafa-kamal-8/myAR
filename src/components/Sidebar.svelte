@@ -6,6 +6,7 @@
     User2,
     LogOut,
     CreditCard,
+    Package,
   } from "lucide-svelte";
   import logo from "../lib/assets/pic.png";
   import { onMount } from "svelte";
@@ -34,7 +35,7 @@
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
 
-        user = userData;  // This sets the user state
+        user = userData; // This sets the user state
       } catch (error) {
         console.error("Error parsing auth parameter:", error);
         goto("/login");
@@ -110,6 +111,17 @@
       <CreditCard size="20" />
       <span class="nav-text">Plans</span>
     </button>
+
+    {#if user?.role === "super_admin"}
+      <button
+        class="nav-item {activeSection === 'pack-plans' ? 'active' : ''}"
+        on:click={() => switchSection("pack-plans")}
+      >
+        <Package size="20" />
+        <span class="nav-text">Pack Plans</span>
+      </button>
+    {/if}
+
     <button class="nav-item" on:click={logout}>
       <LogOut size="20" />
       <span class="nav-text">Logout</span>
